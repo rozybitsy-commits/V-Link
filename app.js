@@ -51,9 +51,7 @@ function auth(req, res, next) {
 }
 
 function adminOnly(req, res, next) {
-  if (req.user.role !== "admin") {
-    return res.status(403).send("Forbidden");
-  }
+  if (req.user.role !== "admin") return res.status(403).send("Forbidden");
   next();
 }
 
@@ -61,9 +59,7 @@ function adminOnly(req, res, next) {
 const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter(req, file, cb) {
-    if (!file.mimetype.startsWith("image/")) {
-      return cb(new Error("Only images allowed"));
-    }
+    if (!file.mimetype.startsWith("image/")) return cb(new Error("Only images allowed"));
     cb(null, true);
   }
 });
@@ -99,18 +95,15 @@ app.post("/login", async (req, res) => {
 /* ================= ANNOUNCEMENTS ================= */
 app.post("/announcements", auth, adminOnly, upload.single("image"), async (req, res) => {
   let imageBase64 = null;
-
   if (req.file) {
     imageBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
   }
-
   const announcement = await Announcement.create({
     title: req.body.title,
     description: req.body.description,
     image: imageBase64,
     author: req.user.id
   });
-
   res.json(announcement);
 });
 
@@ -125,126 +118,129 @@ res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-<title>V-Link Portal</title>
+<title>V-Link</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-.fade { animation: fade .4s ease-in; }
-@keyframes fade { from{opacity:0} to{opacity:1} }
+body{
+ background: linear-gradient(rgba(107,15,26,.92), rgba(107,15,26,.92)),
+ url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1');
+ background-size: cover;
+ background-position:center;
+}
+.fade{animation:fade .5s ease}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1}}
 </style>
 </head>
 
-<body class="bg-gray-100 fade">
+<body class="fade text-gray-800">
 
-<!-- HEADER -->
-<header class="bg-[#6b0f1a] text-white p-3 flex justify-between items-center">
-  <div>
-    <h1 class="font-bold text-sm">Villamor High School</h1>
-    <p class="text-xs text-yellow-200">Villamorian, updated kana ba?</p>
-  </div>
-  <button onclick="toggleDark()" class="bg-white text-black px-2 py-1 rounded text-sm">🌙</button>
-</header>
+<div class="min-h-screen flex flex-col items-center justify-center px-4">
 
-<!-- LOGIN -->
-<div id="loginPage" class="flex items-center justify-center h-screen px-4">
-  <div class="bg-white p-6 rounded-xl shadow-lg w-full max-w-sm">
-    <h2 class="text-xl font-bold mb-4 text-center text-[#6b0f1a]">Welcome</h2>
-    <input id="email" placeholder="Email" class="border p-3 w-full mb-3 rounded"/>
-    <input id="password" type="password" placeholder="Password" class="border p-3 w-full mb-4 rounded"/>
-    <button onclick="login()" class="bg-[#6b0f1a] text-white w-full py-3 rounded font-semibold">
-      Login
+<!-- LOGO -->
+<div class="text-center text-white mb-6">
+  <img src="https://cdn-icons-png.flaticon.com/512/2991/2991148.png"
+       class="w-16 mx-auto mb-3">
+  <h1 class="text-3xl font-bold">V-Link</h1>
+  <p class="text-yellow-300 text-sm">Villamorian, updated kana ba?</p>
+</div>
+
+<!-- CARD -->
+<div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+
+  <!-- LOGIN -->
+  <div id="loginBox">
+    <h2 class="text-xl font-bold text-center mb-4">Welcome Back!</h2>
+
+    <input id="email" placeholder="Email / Username"
+      class="border p-3 w-full mb-3 rounded-lg"/>
+
+    <input id="password" type="password" placeholder="Password"
+      class="border p-3 w-full mb-3 rounded-lg"/>
+
+    <button onclick="login()"
+      class="bg-yellow-400 hover:bg-yellow-500 text-black font-semibold w-full py-3 rounded-lg">
+      Sign In
     </button>
+
+    <p class="text-center text-sm mt-4">
+      Don't have an account?
+      <span onclick="showSignup()" class="text-yellow-500 font-semibold cursor-pointer">
+        Register
+      </span>
+    </p>
   </div>
-</div>
 
-<!-- APP -->
-<div id="app" class="hidden pb-20">
+  <!-- SIGNUP -->
+  <div id="signupBox" class="hidden">
+    <h2 class="text-xl font-bold text-center mb-4">Create Account</h2>
 
-  <div class="p-4 space-y-4">
+    <input id="name" placeholder="Full Name"
+      class="border p-3 w-full mb-3 rounded-lg"/>
 
-    <div id="adminPanel" class="hidden bg-white p-4 rounded-xl shadow">
-      <h3 class="font-bold text-[#6b0f1a] mb-2">Post Announcement</h3>
-      <input id="title" placeholder="Title" class="border p-2 w-full mb-2 rounded"/>
-      <textarea id="desc" placeholder="Description" class="border p-2 w-full mb-2 rounded"></textarea>
-      <input type="file" id="image" class="mb-2"/>
-      <button onclick="postAnnouncement()" class="bg-[#6b0f1a] text-white px-4 py-2 rounded w-full">
-        Post
-      </button>
-    </div>
+    <input id="newEmail" placeholder="Email"
+      class="border p-3 w-full mb-3 rounded-lg"/>
 
-    <h2 class="text-lg font-bold text-[#6b0f1a]">Announcements</h2>
-    <div id="announcements"></div>
+    <input id="newPassword" type="password" placeholder="Password"
+      class="border p-3 w-full mb-3 rounded-lg"/>
 
+    <button onclick="register()"
+      class="bg-[#6b0f1a] text-white w-full py-3 rounded-lg">
+      Sign Up
+    </button>
+
+    <p class="text-center text-sm mt-4">
+      Already have an account?
+      <span onclick="showLogin()" class="text-yellow-500 font-semibold cursor-pointer">
+        Login
+      </span>
+    </p>
   </div>
-</div>
 
-<!-- MOBILE NAV -->
-<nav class="fixed bottom-0 left-0 right-0 bg-white shadow flex justify-around py-2 text-sm">
-  <button onclick="scrollTopPage()">🏠</button>
-  <button onclick="toggleDark()">🌙</button>
-</nav>
+</div>
+</div>
 
 <script>
-let token="", role="";
-
-function toggleDark(){
- document.body.classList.toggle("bg-gray-900");
- document.body.classList.toggle("text-white");
+function showSignup(){
+ loginBox.style.display="none";
+ signupBox.style.display="block";
 }
 
-function scrollTopPage(){
- window.scrollTo({top:0, behavior:'smooth'});
+function showLogin(){
+ signupBox.style.display="none";
+ loginBox.style.display="block";
 }
 
 async function login(){
- const res = await fetch("/login", {
+ const res = await fetch("/login",{
    method:"POST",
    headers:{"Content-Type":"application/json"},
-   body: JSON.stringify({ email: email.value, password: password.value })
+   body: JSON.stringify({
+     email: email.value,
+     password: password.value
+   })
  });
-
  const data = await res.json();
- token=data.token;
- role=data.role;
-
- loginPage.style.display="none";
- app.classList.remove("hidden");
-
- if(role==="admin") adminPanel.classList.remove("hidden");
-
- loadAnnouncements();
+ if(data.token){ location.reload(); }
+ else alert("Login failed");
 }
 
-async function loadAnnouncements(){
- const res = await fetch("/announcements",{ headers:{Authorization: token}});
- const data = await res.json();
-
- announcements.innerHTML="";
- data.forEach(a=>{
-   announcements.innerHTML += \`
-   <div class="bg-white p-4 rounded-xl shadow fade">
-     <h3 class="font-bold text-[#6b0f1a]">\${a.title}</h3>
-     <p class="text-sm">\${a.description}</p>
-     \${a.image ? '<img src="'+a.image+'" class="mt-2 rounded-lg"/>' : ''}
-   </div>\`;
- });
-}
-
-async function postAnnouncement(){
- const formData = new FormData();
- formData.append("title", title.value);
- formData.append("description", desc.value);
- if(image.files[0]) formData.append("image", image.files[0]);
-
- await fetch("/announcements",{
+async function register(){
+ await fetch("/register",{
    method:"POST",
-   headers:{Authorization: token},
-   body: formData
+   headers:{"Content-Type":"application/json"},
+   body: JSON.stringify({
+     name: name.value,
+     email: newEmail.value,
+     password: newPassword.value
+   })
  });
-
- loadAnnouncements();
+ alert("Account created! You can now login.");
+ showLogin();
 }
 </script>
+
 </body>
 </html>
 `);
