@@ -9,18 +9,18 @@ const cors = require("cors");
 
 const app = express();
 
-/* ================= SECURITY ================= */
+/* SECURITY */
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ================= DATABASE ================= */
+/* DATABASE */
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected"))
   .catch(err => console.log(err));
 
-/* ================= MODELS ================= */
+/* MODELS */
 const User = mongoose.model("User", new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
@@ -28,52 +28,15 @@ const User = mongoose.model("User", new mongoose.Schema({
   role: { type: String, enum: ["admin", "student"], default: "student" }
 }));
 
-const Announcement = mongoose.model("Announcement", new mongoose.Schema({
-  title: String,
-  description: String,
-  image: String,
-  author: String,
-  createdAt: { type: Date, default: Date.now }
-}));
-
-/* ================= AUTH ================= */
-function auth(req, res, next) {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).send("Access Denied");
-
-  try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;
-    next();
-  } catch {
-    res.status(400).send("Invalid Token");
-  }
-}
-
-function adminOnly(req, res, next) {
-  if (req.user.role !== "admin") return res.status(403).send("Forbidden");
-  next();
-}
-
-/* ================= FILE UPLOAD ================= */
-const upload = multer({
-  limits: { fileSize: 2 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    if (!file.mimetype.startsWith("image/")) return cb(new Error("Only images allowed"));
-    cb(null, true);
-  }
-});
-
-/* ================= AUTH ROUTES ================= */
+/* AUTH */
 app.post("/register", async (req, res) => {
   const hashed = await bcrypt.hash(req.body.password, 10);
-  const user = await User.create({
+  await User.create({
     name: req.body.name,
     email: req.body.email,
-    password: hashed,
-    role: req.body.role || "student"
+    password: hashed
   });
-  res.json(user);
+  res.sendStatus(200);
 });
 
 app.post("/login", async (req, res) => {
@@ -83,36 +46,11 @@ app.post("/login", async (req, res) => {
   const valid = await bcrypt.compare(req.body.password, user.password);
   if (!valid) return res.status(400).send("Invalid credentials");
 
-  const token = jwt.sign(
-    { id: user._id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
-  );
-
-  res.json({ token, role: user.role });
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+  res.json({ token });
 });
 
-/* ================= ANNOUNCEMENTS ================= */
-app.post("/announcements", auth, adminOnly, upload.single("image"), async (req, res) => {
-  let imageBase64 = null;
-  if (req.file) {
-    imageBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-  }
-  const announcement = await Announcement.create({
-    title: req.body.title,
-    description: req.body.description,
-    image: imageBase64,
-    author: req.user.id
-  });
-  res.json(announcement);
-});
-
-app.get("/announcements", auth, async (req, res) => {
-  const data = await Announcement.find().sort({ createdAt: -1 });
-  res.json(data);
-});
-
-/* ================= FRONTEND ================= */
+/* FRONTEND */
 app.get("/", (req, res) => {
 res.send(`
 <!DOCTYPE html>
@@ -124,81 +62,111 @@ res.send(`
 
 <style>
 body{
- background: linear-gradient(rgba(107,15,26,.92), rgba(107,15,26,.92)),
- url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1');
- background-size: cover;
- background-position:center;
+  background:
+  linear-gradient(rgba(120,0,0,.88), rgba(120,0,0,.88)),
+  url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1');
+  background-size: cover;
+  background-position:center;
+  font-family: 'Segoe UI', sans-serif;
 }
-.fade{animation:fade .5s ease}
-@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1}}
+
+.glass{
+  backdrop-filter: blur(14px);
+  background: rgba(255,255,255,0.92);
+}
+
+.fade{
+  animation: fade .6s ease;
+}
+
+@keyframes fade{
+  from{opacity:0; transform: translateY(15px);}
+  to{opacity:1; transform: translateY(0);}
+}
 </style>
 </head>
 
-<body class="fade text-gray-800">
+<body class="flex items-center justify-center min-h-screen px-4 fade">
 
-<div class="min-h-screen flex flex-col items-center justify-center px-4">
+<div class="w-full max-w-sm">
 
-<!-- LOGO -->
-<div class="text-center text-white mb-6">
-  <img src="https://cdn-icons-png.flaticon.com/512/2991/2991148.png"
-       class="w-16 mx-auto mb-3">
-  <h1 class="text-3xl font-bold">V-Link</h1>
-  <p class="text-yellow-300 text-sm">Villamorian, updated kana ba?</p>
-</div>
-
-<!-- CARD -->
-<div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-
-  <!-- LOGIN -->
-  <div id="loginBox">
-    <h2 class="text-xl font-bold text-center mb-4">Welcome Back!</h2>
-
-    <input id="email" placeholder="Email / Username"
-      class="border p-3 w-full mb-3 rounded-lg"/>
-
-    <input id="password" type="password" placeholder="Password"
-      class="border p-3 w-full mb-3 rounded-lg"/>
-
-    <button onclick="login()"
-      class="bg-yellow-400 hover:bg-yellow-500 text-black font-semibold w-full py-3 rounded-lg">
-      Sign In
-    </button>
-
-    <p class="text-center text-sm mt-4">
-      Don't have an account?
-      <span onclick="showSignup()" class="text-yellow-500 font-semibold cursor-pointer">
-        Register
-      </span>
-    </p>
+  <!-- LOGO & TITLE -->
+  <div class="text-center text-white mb-6">
+    <img src="https://cdn-icons-png.flaticon.com/512/2991/2991148.png"
+         class="w-20 mx-auto mb-3 drop-shadow-lg">
+    <h1 class="text-4xl font-bold tracking-wide">V-Link</h1>
+    <p class="text-yellow-300 mt-1">Stay Connected. Stay Updated.</p>
   </div>
 
-  <!-- SIGNUP -->
-  <div id="signupBox" class="hidden">
-    <h2 class="text-xl font-bold text-center mb-4">Create Account</h2>
+  <!-- CARD -->
+  <div class="glass rounded-2xl shadow-2xl p-6">
 
-    <input id="name" placeholder="Full Name"
-      class="border p-3 w-full mb-3 rounded-lg"/>
+    <!-- LOGIN -->
+    <div id="loginBox">
+      <h2 class="text-xl font-semibold text-center mb-4">Welcome Back!</h2>
 
-    <input id="newEmail" placeholder="Email"
-      class="border p-3 w-full mb-3 rounded-lg"/>
+      <input id="email" placeholder="Email / Username"
+        class="border p-3 w-full mb-3 rounded-lg focus:ring-2 focus:ring-yellow-400"/>
 
-    <input id="newPassword" type="password" placeholder="Password"
-      class="border p-3 w-full mb-3 rounded-lg"/>
+      <input id="password" type="password" placeholder="Password"
+        class="border p-3 w-full mb-3 rounded-lg focus:ring-2 focus:ring-yellow-400"/>
 
-    <button onclick="register()"
-      class="bg-[#6b0f1a] text-white w-full py-3 rounded-lg">
-      Sign Up
-    </button>
+      <label class="text-sm flex items-center gap-2 mb-4">
+        <input type="checkbox"> Remember me
+      </label>
 
-    <p class="text-center text-sm mt-4">
-      Already have an account?
-      <span onclick="showLogin()" class="text-yellow-500 font-semibold cursor-pointer">
-        Login
-      </span>
-    </p>
+      <button onclick="login()"
+        class="w-full py-3 rounded-lg font-semibold text-black
+        bg-gradient-to-r from-yellow-300 to-yellow-500 hover:brightness-110 transition">
+        Sign In
+      </button>
+
+      <div class="flex items-center my-4">
+        <div class="flex-1 border-t"></div>
+        <span class="mx-3 text-gray-400 text-sm">or</span>
+        <div class="flex-1 border-t"></div>
+      </div>
+
+      <button class="w-full py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700">
+        Continue with Facebook
+      </button>
+
+      <p class="text-center text-sm mt-4">
+        Don't have an account?
+        <span onclick="showSignup()" class="text-yellow-500 font-semibold cursor-pointer">
+          Register
+        </span>
+      </p>
+    </div>
+
+    <!-- SIGNUP -->
+    <div id="signupBox" class="hidden">
+      <h2 class="text-xl font-semibold text-center mb-4">Create Account</h2>
+
+      <input id="name" placeholder="Full Name"
+        class="border p-3 w-full mb-3 rounded-lg"/>
+
+      <input id="newEmail" placeholder="Email"
+        class="border p-3 w-full mb-3 rounded-lg"/>
+
+      <input id="newPassword" type="password" placeholder="Password"
+        class="border p-3 w-full mb-4 rounded-lg"/>
+
+      <button onclick="register()"
+        class="w-full py-3 rounded-lg text-white font-semibold
+        bg-[#6b0f1a] hover:brightness-110">
+        Sign Up
+      </button>
+
+      <p class="text-center text-sm mt-4">
+        Already have an account?
+        <span onclick="showLogin()" class="text-yellow-500 font-semibold cursor-pointer">
+          Login
+        </span>
+      </p>
+    </div>
+
   </div>
-
-</div>
 </div>
 
 <script>
@@ -216,14 +184,14 @@ async function login(){
  const res = await fetch("/login",{
    method:"POST",
    headers:{"Content-Type":"application/json"},
-   body: JSON.stringify({
-     email: email.value,
-     password: password.value
-   })
+   body: JSON.stringify({ email: email.value, password: password.value })
  });
- const data = await res.json();
- if(data.token){ location.reload(); }
- else alert("Login failed");
+
+ if(res.ok){
+   alert("Login successful!");
+ } else {
+   alert("Login failed");
+ }
 }
 
 async function register(){
@@ -236,7 +204,8 @@ async function register(){
      password: newPassword.value
    })
  });
- alert("Account created! You can now login.");
+
+ alert("Account created!");
  showLogin();
 }
 </script>
@@ -246,7 +215,7 @@ async function register(){
 `);
 });
 
-/* ================= SERVER ================= */
+/* SERVER */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Server running on port " + PORT);
