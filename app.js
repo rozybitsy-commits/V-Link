@@ -9,15 +9,18 @@ const cors = require("cors");
 
 const app = express();
 
+/* ================= SECURITY ================= */
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/* ================= DATABASE ================= */
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected"))
   .catch(err => console.log(err));
 
+/* ================= MODELS ================= */
 const User = mongoose.model("User", new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
@@ -33,6 +36,7 @@ const Announcement = mongoose.model("Announcement", new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 }));
 
+/* ================= AUTH ================= */
 function auth(req, res, next) {
   const token = req.headers.authorization;
   if (!token) return res.status(401).send("Access Denied");
@@ -53,16 +57,20 @@ function adminOnly(req, res, next) {
   next();
 }
 
+/* ================= FILE UPLOAD ================= */
 const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter(req, file, cb) {
     if (!file.mimetype.startsWith("image/")) {
-      cb(new Error("Only images allowed"));
+      return cb(new Error("Only images allowed"));
     }
     cb(null, true);
   }
 });
 
+/* ================= AUTH ROUTES ================= */
+
+// Register (for creating admin)
 app.post("/register", async (req, res) => {
   const hashed = await bcrypt.hash(req.body.password, 10);
 
@@ -76,6 +84,7 @@ app.post("/register", async (req, res) => {
   res.json(user);
 });
 
+// Login
 app.post("/login", async (req, res) => {
   const user = await User.findOne({ email: req.body.email });
   if (!user) return res.status(400).send("Invalid credentials");
@@ -92,6 +101,9 @@ app.post("/login", async (req, res) => {
   res.json({ token, role: user.role });
 });
 
+/* ================= ANNOUNCEMENTS ================= */
+
+// Create announcement (admin only)
 app.post("/announcements", auth, adminOnly, upload.single("image"), async (req, res) => {
   let imageBase64 = null;
 
@@ -109,11 +121,13 @@ app.post("/announcements", auth, adminOnly, upload.single("image"), async (req, 
   res.json(announcement);
 });
 
+// Get announcements
 app.get("/announcements", auth, async (req, res) => {
   const data = await Announcement.find().sort({ createdAt: -1 });
   res.json(data);
 });
 
+/* ================= FRONTEND ================= */
 app.get("/", (req, res) => {
 res.send(`
 <!DOCTYPE html>
@@ -214,4 +228,12 @@ async function postAnnouncement(){
 </body>
 </html>
 `);
+});
+
+/* ================= SERVER ================= */
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Server running on port " + PORT);
 });
